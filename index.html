@@ -3,177 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TeraBox Player</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <title>Video Player</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.min.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
             margin: 0;
-            padding: 0;
-            background-color: #000;
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        #playerContainer {
-            width: 100%;
-            height: 100vh;
-            position: relative;
-        }
-        #player {
-            width: 100%;
-            height: 100%;
-        }
-        #loading {
+            padding: 16px;
+            background-color: #1c1c1c;
             color: white;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 100;
-            background: rgba(0,0,0,0.7);
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
-        #debug {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            color: lime;
-            font-size: 14px;
-            background: rgba(0,0,0,0.8);
-            padding: 10px;
-            font-family: monospace;
-            max-height: 100px;
-            overflow-y: auto;
-            z-index: 1000;
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .video-container {
+            width: 100%;
+            margin-top: 16px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+        }
+        .video-title {
+            margin: 16px 0;
+            font-size: 18px;
+            font-weight: 500;
+        }
+        .plyr {
+            height: 100%;
+            width: 100%;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-size: 16px;
         }
     </style>
 </head>
 <body>
-<div id="playerContainer">
-    <div id="loading">Initializing player...</div>
-    <video id="player" controls crossorigin playsinline>
-        Your browser does not support the video player.
-    </video>
+<div class="container">
+    <div class="video-title" id="videoTitle">Loading video...</div>
+    <div class="video-container">
+        <video id="player" playsinline controls>
+            <source id="videoSource" type="video/mp4">
+            Your browser doesn't support HTML5 video playback.
+        </video>
+    </div>
 </div>
-<div id="debug">Debug Panel: Started...</div>
 
 <script>
+    // Initialize Telegram WebApp
     const webapp = window.Telegram.WebApp;
     webapp.ready();
     webapp.expand();
 
-    const playerElement = document.getElementById('player');
-    const loading = document.getElementById('loading');
-    const debug = document.getElementById('debug');
+    // Set theme
+    document.body.style.backgroundColor = webapp.backgroundColor;
+    document.body.style.color = webapp.textColor;
 
-    function log(message) {
-        const timestamp = new Date().toLocaleTimeString();
-        debug.innerHTML = `${timestamp}: ${message}<br>` + debug.innerHTML;
-        console.log(`${timestamp}: ${message}`);
-    }
-
-    async function initPlayer(url) {
-        log('🎯 Initializing player with URL');
-
-        try {
-            // Parse the URL and extract necessary parameters
-            const urlObj = new URL(url);
-            const params = new URLSearchParams(urlObj.search);
-
-            // Create proxy URL
-            const proxyUrl = 'https://cors.zimjs.com/' + url;
-
-            // Initialize Plyr
-            const player = new Plyr('#player', {
-                controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
-                settings: ['quality', 'speed'],
-                quality: {
-                    default: 1080,
-                    options: [2160, 1440, 1080, 720, 576, 480, 360, 240]
-                }
-            });
-
-            // Set custom headers
-            const headers = {
-                'Referer': 'https://www.terabox.com/',
-                'Origin': 'https://www.terabox.com',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            };
-
-            // Try to fetch the video through proxy
-            const response = await fetch(proxyUrl, {
-                method: 'GET',
-                headers: headers,
-                mode: 'cors'
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            // Create blob URL from the response
-            const blob = await response.blob();
-            const videoUrl = URL.createObjectURL(blob);
-
-            // Set video source
-            playerElement.src = videoUrl;
-
-            // Add event listeners
-            playerElement.addEventListener('loadedmetadata', () => {
-                log('✅ Video metadata loaded');
-                loading.style.display = 'none';
-            });
-
-            playerElement.addEventListener('error', (e) => {
-                log(`❌ Video error: ${e.target.error.message}`);
-                handlePlaybackError();
-            });
-
-            playerElement.addEventListener('playing', () => {
-                log('▶️ Video playing');
-                loading.style.display = 'none';
-            });
-
-            // Force load the video
-            playerElement.load();
-
-        } catch (error) {
-            log(`❌ Error: ${error.message}`);
-            handlePlaybackError();
+    // Initialize video player
+    const player = new Plyr('#player', {
+        controls: [
+            'play-large',
+            'play',
+            'progress',
+            'current-time',
+            'duration',
+            'mute',
+            'volume',
+            'settings',
+            'fullscreen'
+        ],
+        settings: ['quality', 'speed'],
+        quality: {
+            default: 1080,
+            options: [4320, 2880, 2160, 1440, 1080, 720, 480, 360, 240]
         }
-    }
+    });
 
-    function handlePlaybackError() {
-        loading.innerHTML = 'Unable to play video.<br>Click to reload and try again.';
-        loading.style.cursor = 'pointer';
-        loading.onclick = () => {
-            location.reload();
-        };
-    }
-
-    // Get video URL from URL parameters
+    // Get video URL from query parameters
     const urlParams = new URLSearchParams(window.location.search);
-    const videoUrl = urlParams.get('startapp');
+    const videoUrl = urlParams.get('url');
+    const videoName = urlParams.get('name') || 'Video Player';
 
+    // Set video title
+    document.getElementById('videoTitle').textContent = decodeURIComponent(videoName);
+
+    // Set video source
     if (videoUrl) {
-        try {
-            const decodedUrl = decodeURIComponent(videoUrl);
-            log('🔗 URL decoded successfully');
-            initPlayer(decodedUrl);
-        } catch (e) {
-            log('❌ Error decoding URL: ' + e.message);
-            loading.textContent = 'Error: Invalid video URL';
-        }
+        const videoSource = document.getElementById('videoSource');
+        videoSource.src = decodeURIComponent(videoUrl);
+        player.source = {
+            type: 'video',
+            sources: [{
+                src: decodeURIComponent(videoUrl),
+                type: 'video/mp4',
+            }]
+        };
     } else {
-        log('❌ No URL parameter found');
-        loading.textContent = 'Error: No video URL provided';
+        document.getElementById('videoTitle').textContent = 'Error: No video URL provided';
     }
+
+    // Handle errors
+    player.on('error', (error) => {
+        console.error('Player error:', error);
+        document.getElementById('videoTitle').textContent = 'Error loading video. Please try again.';
+    });
 </script>
 </body>
 </html>
