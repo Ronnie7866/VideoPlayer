@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Player</title>
+    <title>TeraBox Player</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.css" />
     <style>
         body {
             margin: 0;
@@ -14,7 +16,6 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            flex-direction: column;
         }
         #playerContainer {
             width: 100%;
@@ -24,7 +25,6 @@
         #player {
             width: 100%;
             height: 100%;
-            display: none;
         }
         #loading {
             color: white;
@@ -52,21 +52,14 @@
             overflow-y: auto;
             z-index: 1000;
         }
-        #fallbackPlayer {
-            width: 100%;
-            height: 100%;
-            border: none;
-            display: none;
-        }
     </style>
 </head>
 <body>
 <div id="playerContainer">
     <div id="loading">Initializing player...</div>
-    <video id="player" controls playsinline>
+    <video id="player" controls crossorigin playsinline>
         Your browser does not support the video player.
     </video>
-    <iframe id="fallbackPlayer" allowfullscreen></iframe>
 </div>
 <div id="debug">Debug Panel: Started...</div>
 
@@ -76,7 +69,6 @@
     webapp.expand();
 
     const playerElement = document.getElementById('player');
-    const fallbackPlayer = document.getElementById('fallbackPlayer');
     const loading = document.getElementById('loading');
     const debug = document.getElementById('debug');
 
@@ -86,150 +78,86 @@
         console.log(`${timestamp}: ${message}`);
     }
 
-    async function checkUrlStatus(url) {
+    async function initPlayer(url) {
+        log('🎯 Initializing player with URL');
+
         try {
-            const response = await fetch(url, {
-                method: 'HEAD',
-                mode: 'no-cors'
+            // Parse the URL and extract necessary parameters
+            const urlObj = new URL(url);
+            const params = new URLSearchParams(urlObj.search);
+
+            // Create proxy URL
+            const proxyUrl = 'https://cors.zimjs.com/' + url;
+
+            // Initialize Plyr
+            const player = new Plyr('#player', {
+                controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
+                settings: ['quality', 'speed'],
+                quality: {
+                    default: 1080,
+                    options: [2160, 1440, 1080, 720, 576, 480, 360, 240]
+                }
             });
-            return true;
-        } catch (error) {
-            return false;
-        }
-    }
 
-    async function loadVideo(originalUrl) {
-        log('🎯 Starting video load process');
+            // Set custom headers
+            const headers = {
+                'Referer': 'https://www.terabox.com/',
+                'Origin': 'https://www.terabox.com',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            };
 
-        // List of proxy services to try
-        const proxyServices = [
-            {
-                name: 'Direct',
-                url: originalUrl
-            },
-            {
-                name: 'StreamSB',
-                url: `https://embedsb.com/play/${encodeURIComponent(originalUrl)}`
-            },
-            {
-                name: 'VidSrc',
-                url: `https://vidsrc.xyz/embed/${encodeURIComponent(originalUrl)}`
-            }
-        ];
+            // Try to fetch the video through proxy
+            const response = await fetch(proxyUrl, {
+                method: 'GET',
+                headers: headers,
+                mode: 'cors'
+            });
 
-        // Try each proxy service
-        for (const service of proxyServices) {
-            log(`🔄 Trying ${service.name} service`);
-
-            if (service.name === 'Direct') {
-                if (await tryDirectPlay(service.url)) {
-                    return;
-                }
-            } else {
-                if (await tryEmbedService(service.url)) {
-                    return;
-                }
-            }
-        }
-
-        // If all attempts fail
-        log('❌ All playback attempts failed');
-        loading.innerHTML = 'Unable to play video.<br>Click to reload and try again.';
-        loading.style.cursor = 'pointer';
-        loading.onclick = () => location.reload();
-    }
-
-    async function tryDirectPlay(url) {
-        return new Promise((resolve) => {
-            log('🎥 Attempting direct playback');
-
-            playerElement.style.display = 'block';
-            fallbackPlayer.style.display = 'none';
-
-            const videoSource = document.createElement('source');
-            videoSource.src = url;
-            videoSource.type = 'video/mp4';
-
-            // Clear existing sources
-            while (playerElement.firstChild) {
-                playerElement.removeChild(playerElement.firstChild);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            playerElement.appendChild(videoSource);
+            // Create blob URL from the response
+            const blob = await response.blob();
+            const videoUrl = URL.createObjectURL(blob);
+
+            // Set video source
+            playerElement.src = videoUrl;
+
+            // Add event listeners
+            playerElement.addEventListener('loadedmetadata', () => {
+                log('✅ Video metadata loaded');
+                loading.style.display = 'none';
+            });
+
+            playerElement.addEventListener('error', (e) => {
+                log(`❌ Video error: ${e.target.error.message}`);
+                handlePlaybackError();
+            });
+
+            playerElement.addEventListener('playing', () => {
+                log('▶️ Video playing');
+                loading.style.display = 'none';
+            });
+
+            // Force load the video
             playerElement.load();
 
-            // Add headers through fetch
-            fetch(url, {
-                headers: {
-                    'Range': 'bytes=0-',
-                    'Referer': 'https://www.terabox.com/',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            }).then(response => {
-                if (response.ok) {
-                    return response.blob();
-                }
-                throw new Error('Network response was not ok');
-            }).then(blob => {
-                const videoUrl = URL.createObjectURL(blob);
-                playerElement.src = videoUrl;
-                playerElement.load();
-                loading.style.display = 'none';
-                resolve(true);
-            }).catch(error => {
-                log(`⚠️ Direct playback failed: ${error.message}`);
-                resolve(false);
-            });
-
-            const timeoutId = setTimeout(() => {
-                log('⚠️ Direct playback timeout');
-                resolve(false);
-            }, 5000);
-
-            playerElement.oncanplay = () => {
-                clearTimeout(timeoutId);
-                loading.style.display = 'none';
-                log('✅ Direct playback successful');
-                resolve(true);
-            };
-
-            playerElement.onerror = () => {
-                clearTimeout(timeoutId);
-                log('❌ Direct playback failed');
-                resolve(false);
-            };
-        });
+        } catch (error) {
+            log(`❌ Error: ${error.message}`);
+            handlePlaybackError();
+        }
     }
 
-    async function tryEmbedService(url) {
-        return new Promise((resolve) => {
-            log(`🔄 Trying embed service: ${url}`);
-
-            playerElement.style.display = 'none';
-            fallbackPlayer.style.display = 'block';
-            fallbackPlayer.src = url;
-
-            const timeoutId = setTimeout(() => {
-                log('⚠️ Embed service timeout');
-                resolve(false);
-            }, 5000);
-
-            fallbackPlayer.onload = () => {
-                clearTimeout(timeoutId);
-                loading.style.display = 'none';
-                log('✅ Embed service loaded successfully');
-                resolve(true);
-            };
-
-            fallbackPlayer.onerror = () => {
-                clearTimeout(timeoutId);
-                log('❌ Embed service failed');
-                resolve(false);
-            };
-        });
+    function handlePlaybackError() {
+        loading.innerHTML = 'Unable to play video.<br>Click to reload and try again.';
+        loading.style.cursor = 'pointer';
+        loading.onclick = () => {
+            location.reload();
+        };
     }
 
-    // Initialize everything
+    // Get video URL from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const videoUrl = urlParams.get('startapp');
 
@@ -237,7 +165,7 @@
         try {
             const decodedUrl = decodeURIComponent(videoUrl);
             log('🔗 URL decoded successfully');
-            loadVideo(decodedUrl);
+            initPlayer(decodedUrl);
         } catch (e) {
             log('❌ Error decoding URL: ' + e.message);
             loading.textContent = 'Error: Invalid video URL';
