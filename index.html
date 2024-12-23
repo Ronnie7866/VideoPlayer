@@ -30,7 +30,7 @@
 </head>
 <body>
 <div id="loading">Loading video...</div>
-<video id="player" controls playsinline>
+<video id="player" controls playsinline style="display: none;">
     Your browser does not support the video player.
 </video>
 
@@ -42,23 +42,25 @@
     const player = document.getElementById('player');
     const loading = document.getElementById('loading');
 
-    // Get video URL from Telegram start parameter
-    const videoUrl = webapp.initDataUnsafe.start_param;
-    console.log('Start parameter:', videoUrl); // For debugging
+    // Get video URL from URL parameters instead of start_param
+    const urlParams = new URLSearchParams(window.location.search);
+    const videoUrl = urlParams.get('startapp');
 
     if (videoUrl) {
-        const decodedUrl = decodeURIComponent(videoUrl);
-        console.log('Decoded URL:', decodedUrl); // For debugging
-        player.src = decodedUrl;
-        player.style.display = 'block';
-        loading.style.display = 'none';
+        try {
+            const decodedUrl = decodeURIComponent(videoUrl);
+            player.src = decodedUrl;
+            player.style.display = 'block';
+            loading.style.display = 'none';
+        } catch (e) {
+            loading.textContent = 'Error: Invalid video URL';
+            console.error('URL decode error:', e);
+        }
     } else {
         loading.textContent = 'Error: No video URL provided';
-        console.log('No start parameter found'); // For debugging
     }
 
     player.addEventListener('error', (e) => {
-        console.log('Video error:', e.target.error); // For debugging
         loading.textContent = 'Error: Failed to load video';
         loading.style.display = 'block';
         player.style.display = 'none';
