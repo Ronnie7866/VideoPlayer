@@ -30,7 +30,7 @@
 </head>
 <body>
 <div id="loading">Loading video...</div>
-<video id="player" controls playsinline style="display: none;">
+<video id="player" controls playsinline crossorigin="anonymous">
     Your browser does not support the video player.
 </video>
 
@@ -42,16 +42,33 @@
     const player = document.getElementById('player');
     const loading = document.getElementById('loading');
 
-    // Get video URL from URL parameters instead of start_param
+    // Get video URL from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const videoUrl = urlParams.get('startapp');
 
     if (videoUrl) {
         try {
             const decodedUrl = decodeURIComponent(videoUrl);
-            player.src = decodedUrl;
-            player.style.display = 'block';
-            loading.style.display = 'none';
+            console.log('Loading URL:', decodedUrl);
+
+            // Create object URL from blob
+            fetch(decodedUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    player.src = url;
+                    player.style.display = 'block';
+                    loading.style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    loading.textContent = 'Error: Could not load video file';
+                });
         } catch (e) {
             loading.textContent = 'Error: Invalid video URL';
             console.error('URL decode error:', e);
@@ -61,6 +78,7 @@
     }
 
     player.addEventListener('error', (e) => {
+        console.error('Video error:', e);
         loading.textContent = 'Error: Failed to load video';
         loading.style.display = 'block';
         player.style.display = 'none';
