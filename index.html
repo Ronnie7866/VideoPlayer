@@ -73,39 +73,32 @@
         try {
             const decodedUrl = decodeURIComponent(videoUrl);
             log('🔗 URL decoded successfully');
-            log('📥 Attempting to load video...');
 
-            // Set up fetch options
-            const fetchOptions = {
-                method: 'GET',
-                headers: {
-                    'Accept': 'video/webm,video/mp4,video/*',
-                    'Range': 'bytes=0-',
-                },
-                mode: 'cors',
-            };
+            // Create meta tag for referrer policy
+            const meta = document.createElement('meta');
+            meta.name = 'referrer';
+            meta.content = 'no-referrer';
+            document.head.appendChild(meta);
 
-            // Check URL accessibility
-            fetch(decodedUrl, fetchOptions)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    log('✅ URL is accessible');
-                    log('🎥 Setting video source...');
+            // Set video attributes
+            player.crossOrigin = 'anonymous';
+            player.referrerPolicy = 'no-referrer';
 
-                    // Set video source
-                    player.src = decodedUrl;
-                    player.style.display = 'block';
+            // Set source with type
+            const source = document.createElement('source');
+            source.src = decodedUrl;
+            source.type = 'video/mp4';
+            player.appendChild(source);
 
-                    return true;
-                })
-                .catch(error => {
-                    log('❌ Error accessing URL: ' + error.message);
-                    loading.textContent = 'Error: Could not access video file';
-                });
+            // Set direct src as backup
+            player.src = decodedUrl;
+
+            log('🎥 Video source set, attempting to load...');
+            player.style.display = 'block';
+            player.load(); // Force reload with new settings
+
         } catch (e) {
-            log('❌ Error decoding URL: ' + e.message);
+            log('❌ Error setting up video: ' + e.message);
             loading.textContent = 'Error: Invalid video URL';
         }
     } else {
