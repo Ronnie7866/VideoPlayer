@@ -26,11 +26,21 @@
             left: 50%;
             transform: translate(-50%, -50%);
         }
+        #debug {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            font-size: 12px;
+            background: rgba(0,0,0,0.7);
+            padding: 5px;
+        }
     </style>
 </head>
 <body>
 <div id="loading">Loading video...</div>
-<video id="player" controls playsinline crossorigin="anonymous">
+<div id="debug"></div>
+<video id="player" controls playsinline>
     Your browser does not support the video player.
 </video>
 
@@ -41,6 +51,12 @@
 
     const player = document.getElementById('player');
     const loading = document.getElementById('loading');
+    const debug = document.getElementById('debug');
+
+    function log(message) {
+        console.log(message);
+        debug.textContent += message + '\n';
+    }
 
     // Get video URL from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
@@ -49,42 +65,82 @@
     if (videoUrl) {
         try {
             const decodedUrl = decodeURIComponent(videoUrl);
-            console.log('Loading URL:', decodedUrl);
+            log('Attempting to load URL...');
 
-            // Create object URL from blob
-            fetch(decodedUrl)
+            // Set up fetch options with necessary headers
+            const fetchOptions = {
+                method: 'GET',
+                headers: {
+                    'Accept': 'video/webm,video/mp4,video/*',
+                    'Range': 'bytes=0-',
+                },
+                mode: 'cors',
+            };
+
+            // First check if the URL is accessible
+            fetch(decodedUrl, fetchOptions)
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Network response was not ok');
+                        throw new Error(`HTTP error! status: ${response.status}`);
                     }
-                    return response.blob();
-                })
-                .then(blob => {
-                    const url = URL.createObjectURL(blob);
-                    player.src = url;
+                    log('URL accessible, setting video source...');
+
+                    // Set the video source directly
+                    player.src = decodedUrl;
                     player.style.display = 'block';
-                    loading.style.display = 'none';
+
+                    // Add source element as backup
+                    const source = document.createElement('source');
+                    source.src = decodedUrl;
+                    source.type = 'video/mp4';
+                    player.appendChild(source);
+
+                    return true;
                 })
                 .catch(error => {
-                    console.error('Error:', error);
-                    loading.textContent = 'Error: Could not load video file';
+                    log('Error accessing URL: ' + error.message);
+                    loading.textContent = 'Error: Could not access video file';
                 });
         } catch (e) {
+            log('Error decoding URL: ' + e.message);
             loading.textContent = 'Error: Invalid video URL';
-            console.error('URL decode error:', e);
         }
     } else {
+        log('No URL parameter found');
         loading.textContent = 'Error: No video URL provided';
     }
 
+    player.addEventListener('loadstart', () => {
+        log('Video loading started');
+    });
+
     player.addEventListener('error', (e) => {
-        console.error('Video error:', e);
-        loading.textContent = 'Error: Failed to load video';
+        const error = e.target.error;
+        let errorMessage = 'Failed to load video';
+        if (error) {
+            switch (error.code) {
+                case error.MEDIA_ERR_ABORTED:
+                    errorMessage = 'Loading aborted';
+                    break;
+                case error.MEDIA_ERR_NETWORK:
+                    errorMessage = 'Network error';
+                    break;
+                case error.MEDIA_ERR_DECODE:
+                    errorMessage = 'Decode error';
+                    break;
+                case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                    errorMessage = 'Format not supported';
+                    break;
+            }
+        }
+        log('Video Error: ' + errorMessage);
+        loading.textContent = 'Error: ' + errorMessage;
         loading.style.display = 'block';
         player.style.display = 'none';
     });
 
     player.addEventListener('loadeddata', () => {
+        log('Video loaded successfully');
         loading.style.display = 'none';
     });
 </script>
