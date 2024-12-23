@@ -28,18 +28,24 @@
         }
         #debug {
             position: fixed;
-            bottom: 10px;
-            left: 10px;
-            color: white;
-            font-size: 12px;
-            background: rgba(0,0,0,0.7);
-            padding: 5px;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            color: lime;
+            font-size: 14px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            font-family: monospace;
+            max-height: 100px;
+            overflow-y: auto;
+            z-index: 1000;
+            border-top: 1px solid #333;
         }
     </style>
 </head>
 <body>
 <div id="loading">Loading video...</div>
-<div id="debug"></div>
+<div id="debug">Debug Panel: Started...</div>
 <video id="player" controls playsinline>
     Your browser does not support the video player.
 </video>
@@ -54,8 +60,9 @@
     const debug = document.getElementById('debug');
 
     function log(message) {
-        console.log(message);
-        debug.textContent += message + '\n';
+        const timestamp = new Date().toLocaleTimeString();
+        debug.innerHTML = `${timestamp}: ${message}<br>` + debug.innerHTML;
+        console.log(`${timestamp}: ${message}`);
     }
 
     // Get video URL from URL parameters
@@ -65,9 +72,10 @@
     if (videoUrl) {
         try {
             const decodedUrl = decodeURIComponent(videoUrl);
-            log('Attempting to load URL...');
+            log('🔗 URL decoded successfully');
+            log('📥 Attempting to load video...');
 
-            // Set up fetch options with necessary headers
+            // Set up fetch options
             const fetchOptions = {
                 method: 'GET',
                 headers: {
@@ -77,41 +85,36 @@
                 mode: 'cors',
             };
 
-            // First check if the URL is accessible
+            // Check URL accessibility
             fetch(decodedUrl, fetchOptions)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
-                    log('URL accessible, setting video source...');
+                    log('✅ URL is accessible');
+                    log('🎥 Setting video source...');
 
-                    // Set the video source directly
+                    // Set video source
                     player.src = decodedUrl;
                     player.style.display = 'block';
-
-                    // Add source element as backup
-                    const source = document.createElement('source');
-                    source.src = decodedUrl;
-                    source.type = 'video/mp4';
-                    player.appendChild(source);
 
                     return true;
                 })
                 .catch(error => {
-                    log('Error accessing URL: ' + error.message);
+                    log('❌ Error accessing URL: ' + error.message);
                     loading.textContent = 'Error: Could not access video file';
                 });
         } catch (e) {
-            log('Error decoding URL: ' + e.message);
+            log('❌ Error decoding URL: ' + e.message);
             loading.textContent = 'Error: Invalid video URL';
         }
     } else {
-        log('No URL parameter found');
+        log('❌ No URL parameter found');
         loading.textContent = 'Error: No video URL provided';
     }
 
     player.addEventListener('loadstart', () => {
-        log('Video loading started');
+        log('▶️ Video loading started');
     });
 
     player.addEventListener('error', (e) => {
@@ -133,15 +136,19 @@
                     break;
             }
         }
-        log('Video Error: ' + errorMessage);
+        log('❌ Video Error: ' + errorMessage);
         loading.textContent = 'Error: ' + errorMessage;
         loading.style.display = 'block';
         player.style.display = 'none';
     });
 
     player.addEventListener('loadeddata', () => {
-        log('Video loaded successfully');
+        log('✅ Video loaded successfully');
         loading.style.display = 'none';
+    });
+
+    player.addEventListener('playing', () => {
+        log('▶️ Video started playing');
     });
 </script>
 </body>
