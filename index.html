@@ -41,6 +41,12 @@
             z-index: 1000;
             border-top: 1px solid #333;
         }
+        #fallbackPlayer {
+            display: none;
+            width: 100%;
+            height: 100vh;
+            border: none;
+        }
     </style>
 </head>
 <body>
@@ -49,6 +55,7 @@
 <video id="player" controls playsinline>
     Your browser does not support the video player.
 </video>
+<iframe id="fallbackPlayer"></iframe>
 
 <script>
     const webapp = window.Telegram.WebApp;
@@ -56,6 +63,7 @@
     webapp.expand();
 
     const player = document.getElementById('player');
+    const fallbackPlayer = document.getElementById('fallbackPlayer');
     const loading = document.getElementById('loading');
     const debug = document.getElementById('debug');
 
@@ -65,7 +73,7 @@
         console.log(`${timestamp}: ${message}`);
     }
 
-    // Get video URL from URL parameters
+    // Parse video URL
     const urlParams = new URLSearchParams(window.location.search);
     const videoUrl = urlParams.get('startapp');
 
@@ -74,31 +82,51 @@
             const decodedUrl = decodeURIComponent(videoUrl);
             log('🔗 URL decoded successfully');
 
-            // Create meta tag for referrer policy
-            const meta = document.createElement('meta');
-            meta.name = 'referrer';
-            meta.content = 'no-referrer';
-            document.head.appendChild(meta);
+            // Add headers
+            const headers = {
+                'Referer': 'https://www.terabox.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Range': 'bytes=0-'
+            };
 
-            // Set video attributes
-            player.crossOrigin = 'anonymous';
-            player.referrerPolicy = 'no-referrer';
+            // First try: Direct video playback with headers
+            fetch(decodedUrl, { headers })
+                .then(response => {
+                    if (response.ok) {
+                        const contentType = response.headers.get('content-type');
+                        log(`📦 Content-Type: ${contentType}`);
 
-            // Set source with type
-            const source = document.createElement('source');
-            source.src = decodedUrl;
-            source.type = 'video/mp4';
-            player.appendChild(source);
+                        if (contentType && contentType.includes('video')) {
+                            player.src = decodedUrl;
+                            player.load();
+                        } else {
+                            throw new Error('Not a video content type');
+                        }
+                    } else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                })
+                .catch(error => {
+                    log(`⚠️ Direct playback failed: ${error.message}`);
+                    tryFallbackMethod(decodedUrl);
+                });
 
-            // Set direct src as backup
-            player.src = decodedUrl;
+            function tryFallbackMethod(url) {
+                log('🔄 Trying fallback method...');
 
-            log('🎥 Video source set, attempting to load...');
-            player.style.display = 'block';
-            player.load(); // Force reload with new settings
+                // Hide video player and show fallback
+                player.style.display = 'none';
+                fallbackPlayer.style.display = 'block';
+
+                // Create a proxy URL if needed
+                const proxyUrl = `https://cors-anywhere.herokuapp.com/${url}`;
+                fallbackPlayer.src = proxyUrl;
+
+                loading.style.display = 'none';
+            }
 
         } catch (e) {
-            log('❌ Error setting up video: ' + e.message);
+            log('❌ Error in setup: ' + e.message);
             loading.textContent = 'Error: Invalid video URL';
         }
     } else {
@@ -130,9 +158,7 @@
             }
         }
         log('❌ Video Error: ' + errorMessage);
-        loading.textContent = 'Error: ' + errorMessage;
-        loading.style.display = 'block';
-        player.style.display = 'none';
+        tryFallbackMethod(player.src);
     });
 
     player.addEventListener('loadeddata', () => {
