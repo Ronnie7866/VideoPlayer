@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Player</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.10/hls.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.css" />
     <style>
         body {
             margin: 0;
@@ -15,10 +17,17 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            flex-direction: column;
+        }
+        #playerContainer {
+            width: 100%;
+            max-width: 100vw;
+            height: 100vh;
+            position: relative;
         }
         #player {
             width: 100%;
-            max-height: 100vh;
+            height: 100%;
         }
         #loading {
             color: white;
@@ -26,6 +35,31 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
+            z-index: 100;
+            background: rgba(0,0,0,0.7);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        #playButton {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 101;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 20px 40px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 18px;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+        }
+        #playButton:hover {
+            background: rgba(255,255,255,0.3);
         }
         #debug {
             position: fixed;
@@ -40,25 +74,29 @@
             max-height: 100px;
             overflow-y: auto;
             z-index: 1000;
-            border-top: 1px solid #333;
         }
     </style>
 </head>
 <body>
-<div id="loading">Loading video...</div>
+<div id="playerContainer">
+    <div id="loading">Initializing player...</div>
+    <button id="playButton">Click to Play Video</button>
+    <video id="player" playsinline>
+        Your browser does not support the video player.
+    </video>
+</div>
 <div id="debug">Debug Panel: Started...</div>
-<video id="player" controls playsinline>
-    Your browser does not support the video player.
-</video>
 
 <script>
     const webapp = window.Telegram.WebApp;
     webapp.ready();
     webapp.expand();
 
-    const player = document.getElementById('player');
+    const playerElement = document.getElementById('player');
     const loading = document.getElementById('loading');
+    const playButton = document.getElementById('playButton');
     const debug = document.getElementById('debug');
+    let player = null;
 
     function log(message) {
         const timestamp = new Date().toLocaleTimeString();
@@ -66,82 +104,105 @@
         console.log(`${timestamp}: ${message}`);
     }
 
-    async function tryPlayVideo(url, attempt = 1) {
-        log(`Attempting to play video (try ${attempt})`);
+    // Initialize Plyr
+    function initPlayer() {
+        player = new Plyr('#player', {
+            controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
+            settings: ['quality', 'speed'],
+            quality: { default: 576, options: [4320, 2880, 2160, 1440, 1080, 720, 576, 480, 360, 240] }
+        });
 
-        const proxyUrls = [
-            url,
-            `https://corsproxy.io/?${encodeURIComponent(url)}`,
-            `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-            `https://proxy.cors.sh/${url}`
-        ];
+        player.on('ready', () => {
+            log('✅ Player initialized');
+        });
 
-        if (attempt > proxyUrls.length) {
-            log('❌ All attempts failed');
-            loading.textContent = 'Error: Unable to play video. Please try again.';
-            return;
-        }
+        player.on('error', (error) => {
+            log(`❌ Player error: ${error.detail.message}`);
+            handlePlaybackError();
+        });
+    }
 
-        const currentUrl = proxyUrls[attempt - 1];
-        log(`🔄 Trying URL: ${attempt}`);
-
+    async function loadVideo(url) {
         try {
-            // Add headers through URL parameters
-            const finalUrl = new URL(currentUrl);
-            finalUrl.searchParams.append('referer', 'https://www.terabox.com/');
-            finalUrl.searchParams.append('user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+            // Add necessary headers
+            const headers = {
+                'Referer': 'https://www.terabox.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            };
 
-            // Try HLS.js first if supported
+            // Append headers to URL
+            const finalUrl = new URL(url);
+            Object.entries(headers).forEach(([key, value]) => {
+                finalUrl.searchParams.append(key.toLowerCase(), value);
+            });
+
+            // Try HLS first
             if (Hls.isSupported()) {
                 const hls = new Hls({
-                    xhrSetup: function(xhr) {
-                        xhr.setRequestHeader('Referer', 'https://www.terabox.com/');
-                        xhr.setRequestHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+                    xhrSetup: (xhr, url) => {
+                        Object.entries(headers).forEach(([key, value]) => {
+                            xhr.setRequestHeader(key, value);
+                        });
+                    }
+                });
+
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    if (data.fatal) {
+                        log('⚠️ HLS playback failed, trying direct playback');
+                        hls.destroy();
+                        tryDirectPlayback(finalUrl.toString());
                     }
                 });
 
                 hls.loadSource(finalUrl.toString());
-                hls.attachMedia(player);
+                hls.attachMedia(playerElement);
 
-                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
                     log('✅ HLS manifest loaded');
-                    player.play().catch(e => {
-                        log(`⚠️ Auto-play failed: ${e.message}`);
-                    });
-                });
-
-                hls.on(Hls.Events.ERROR, function(event, data) {
-                    if (data.fatal) {
-                        log('❌ HLS fatal error - trying direct playback');
-                        hls.destroy();
-                        tryDirectPlayback(finalUrl.toString());
-                    }
+                    showPlayButton();
                 });
             } else {
                 tryDirectPlayback(finalUrl.toString());
             }
         } catch (error) {
-            log(`❌ Error on attempt ${attempt}: ${error.message}`);
-            // Try next proxy
-            setTimeout(() => tryPlayVideo(url, attempt + 1), 1000);
+            log(`❌ Error loading video: ${error.message}`);
+            handlePlaybackError();
         }
     }
 
     function tryDirectPlayback(url) {
-        player.src = url;
-        player.load();
-
-        const playPromise = player.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                log(`⚠️ Direct playback failed: ${error.message}`);
-                // If both HLS and direct playback fail, try next proxy
-                setTimeout(() => tryPlayVideo(url, attempt + 1), 1000);
-            });
-        }
+        log('🎥 Attempting direct playback');
+        playerElement.src = url;
+        playerElement.load();
+        showPlayButton();
     }
 
-    // Get video URL from URL parameters
+    function showPlayButton() {
+        loading.style.display = 'none';
+        playButton.style.display = 'block';
+
+        playButton.onclick = () => {
+            playButton.style.display = 'none';
+            playerElement.play()
+                .then(() => {
+                    log('▶️ Playback started');
+                })
+                .catch(error => {
+                    log(`❌ Playback error: ${error.message}`);
+                    handlePlaybackError();
+                });
+        };
+    }
+
+    function handlePlaybackError() {
+        loading.textContent = 'Unable to play video. Click to try again';
+        loading.style.cursor = 'pointer';
+        loading.onclick = () => {
+            location.reload();
+        };
+    }
+
+    // Initialize everything
     const urlParams = new URLSearchParams(window.location.search);
     const videoUrl = urlParams.get('startapp');
 
@@ -149,7 +210,8 @@
         try {
             const decodedUrl = decodeURIComponent(videoUrl);
             log('🔗 URL decoded successfully');
-            tryPlayVideo(decodedUrl);
+            initPlayer();
+            loadVideo(decodedUrl);
         } catch (e) {
             log('❌ Error decoding URL: ' + e.message);
             loading.textContent = 'Error: Invalid video URL';
@@ -158,42 +220,6 @@
         log('❌ No URL parameter found');
         loading.textContent = 'Error: No video URL provided';
     }
-
-    player.addEventListener('loadstart', () => {
-        log('▶️ Video loading started');
-    });
-
-    player.addEventListener('loadeddata', () => {
-        log('✅ Video loaded successfully');
-        loading.style.display = 'none';
-    });
-
-    player.addEventListener('playing', () => {
-        log('▶️ Video started playing');
-        loading.style.display = 'none';
-    });
-
-    player.addEventListener('error', (e) => {
-        const error = e.target.error;
-        let errorMessage = 'Failed to load video';
-        if (error) {
-            switch (error.code) {
-                case error.MEDIA_ERR_ABORTED:
-                    errorMessage = 'Loading aborted';
-                    break;
-                case error.MEDIA_ERR_NETWORK:
-                    errorMessage = 'Network error';
-                    break;
-                case error.MEDIA_ERR_DECODE:
-                    errorMessage = 'Decode error';
-                    break;
-                case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-                    errorMessage = 'Format not supported';
-                    break;
-            }
-        }
-        log('❌ Video Error: ' + errorMessage);
-    });
 </script>
 </body>
 </html>
