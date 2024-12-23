@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Player</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.10/hls.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -41,12 +42,6 @@
             z-index: 1000;
             border-top: 1px solid #333;
         }
-        #fallbackPlayer {
-            display: none;
-            width: 100%;
-            height: 100vh;
-            border: none;
-        }
     </style>
 </head>
 <body>
@@ -55,7 +50,6 @@
 <video id="player" controls playsinline>
     Your browser does not support the video player.
 </video>
-<iframe id="fallbackPlayer"></iframe>
 
 <script>
     const webapp = window.Telegram.WebApp;
@@ -63,7 +57,6 @@
     webapp.expand();
 
     const player = document.getElementById('player');
-    const fallbackPlayer = document.getElementById('fallbackPlayer');
     const loading = document.getElementById('loading');
     const debug = document.getElementById('debug');
 
@@ -73,7 +66,82 @@
         console.log(`${timestamp}: ${message}`);
     }
 
-    // Parse video URL
+    async function tryPlayVideo(url, attempt = 1) {
+        log(`Attempting to play video (try ${attempt})`);
+
+        const proxyUrls = [
+            url,
+            `https://corsproxy.io/?${encodeURIComponent(url)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+            `https://proxy.cors.sh/${url}`
+        ];
+
+        if (attempt > proxyUrls.length) {
+            log('❌ All attempts failed');
+            loading.textContent = 'Error: Unable to play video. Please try again.';
+            return;
+        }
+
+        const currentUrl = proxyUrls[attempt - 1];
+        log(`🔄 Trying URL: ${attempt}`);
+
+        try {
+            // Add headers through URL parameters
+            const finalUrl = new URL(currentUrl);
+            finalUrl.searchParams.append('referer', 'https://www.terabox.com/');
+            finalUrl.searchParams.append('user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+
+            // Try HLS.js first if supported
+            if (Hls.isSupported()) {
+                const hls = new Hls({
+                    xhrSetup: function(xhr) {
+                        xhr.setRequestHeader('Referer', 'https://www.terabox.com/');
+                        xhr.setRequestHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+                    }
+                });
+
+                hls.loadSource(finalUrl.toString());
+                hls.attachMedia(player);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    log('✅ HLS manifest loaded');
+                    player.play().catch(e => {
+                        log(`⚠️ Auto-play failed: ${e.message}`);
+                    });
+                });
+
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    if (data.fatal) {
+                        log('❌ HLS fatal error - trying direct playback');
+                        hls.destroy();
+                        tryDirectPlayback(finalUrl.toString());
+                    }
+                });
+            } else {
+                tryDirectPlayback(finalUrl.toString());
+            }
+        } catch (error) {
+            log(`❌ Error on attempt ${attempt}: ${error.message}`);
+            // Try next proxy
+            setTimeout(() => tryPlayVideo(url, attempt + 1), 1000);
+        }
+    }
+
+    function tryDirectPlayback(url) {
+        player.src = url;
+        player.load();
+
+        const playPromise = player.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                log(`⚠️ Direct playback failed: ${error.message}`);
+                // If both HLS and direct playback fail, try next proxy
+                setTimeout(() => tryPlayVideo(url, attempt + 1), 1000);
+            });
+        }
+    }
+
+    // Get video URL from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const videoUrl = urlParams.get('startapp');
 
@@ -81,52 +149,9 @@
         try {
             const decodedUrl = decodeURIComponent(videoUrl);
             log('🔗 URL decoded successfully');
-
-            // Add headers
-            const headers = {
-                'Referer': 'https://www.terabox.com/',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Range': 'bytes=0-'
-            };
-
-            // First try: Direct video playback with headers
-            fetch(decodedUrl, { headers })
-                .then(response => {
-                    if (response.ok) {
-                        const contentType = response.headers.get('content-type');
-                        log(`📦 Content-Type: ${contentType}`);
-
-                        if (contentType && contentType.includes('video')) {
-                            player.src = decodedUrl;
-                            player.load();
-                        } else {
-                            throw new Error('Not a video content type');
-                        }
-                    } else {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                })
-                .catch(error => {
-                    log(`⚠️ Direct playback failed: ${error.message}`);
-                    tryFallbackMethod(decodedUrl);
-                });
-
-            function tryFallbackMethod(url) {
-                log('🔄 Trying fallback method...');
-
-                // Hide video player and show fallback
-                player.style.display = 'none';
-                fallbackPlayer.style.display = 'block';
-
-                // Create a proxy URL if needed
-                const proxyUrl = `https://cors-anywhere.herokuapp.com/${url}`;
-                fallbackPlayer.src = proxyUrl;
-
-                loading.style.display = 'none';
-            }
-
+            tryPlayVideo(decodedUrl);
         } catch (e) {
-            log('❌ Error in setup: ' + e.message);
+            log('❌ Error decoding URL: ' + e.message);
             loading.textContent = 'Error: Invalid video URL';
         }
     } else {
@@ -136,6 +161,16 @@
 
     player.addEventListener('loadstart', () => {
         log('▶️ Video loading started');
+    });
+
+    player.addEventListener('loadeddata', () => {
+        log('✅ Video loaded successfully');
+        loading.style.display = 'none';
+    });
+
+    player.addEventListener('playing', () => {
+        log('▶️ Video started playing');
+        loading.style.display = 'none';
     });
 
     player.addEventListener('error', (e) => {
@@ -158,16 +193,6 @@
             }
         }
         log('❌ Video Error: ' + errorMessage);
-        tryFallbackMethod(player.src);
-    });
-
-    player.addEventListener('loadeddata', () => {
-        log('✅ Video loaded successfully');
-        loading.style.display = 'none';
-    });
-
-    player.addEventListener('playing', () => {
-        log('▶️ Video started playing');
     });
 </script>
 </body>
