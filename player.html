@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Player</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.min.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .player-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .plyr {
+            width: 100%;
+            max-width: 100vw;
+            height: auto;
+        }
+        .loading {
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="player-wrapper">
+        <div id="loading" class="loading">Loading video...</div>
+        <video id="player" playsinline controls>
+            Your browser does not support the video player.
+        </video>
+    </div>
+
+    <script>
+        // Initialize Telegram WebApp
+        const webapp = window.Telegram.WebApp;
+        webapp.ready();
+        webapp.expand();
+
+        // Get video URL from query parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const videoUrl = decodeURIComponent(urlParams.get('url'));
+
+        const player = new Plyr('#player', {
+            controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen'],
+            settings: ['quality', 'speed'],
+            speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] }
+        });
+
+        const videoElement = document.getElementById('player');
+        const loadingElement = document.getElementById('loading');
+
+        if (videoUrl) {
+            videoElement.src = videoUrl;
+            videoElement.style.display = 'block';
+            loadingElement.style.display = 'none';
+        } else {
+            loadingElement.textContent = 'Error: No video URL provided';
+        }
+
+        // Handle errors
+        videoElement.addEventListener('error', () => {
+            loadingElement.textContent = 'Error: Failed to load video';
+            loadingElement.style.display = 'block';
+            videoElement.style.display = 'none';
+        });
+    </script>
+</body>
+</html>
