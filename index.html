@@ -83,28 +83,23 @@
         }
     });
 
-    // Get video URL from query parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const videoUrl = urlParams.get('url');
-    const videoName = urlParams.get('name') || 'Video Player';
+    // Hardcoded TeraBox URL
+    const teraboxUrl = "https://www.1024terabox.com/sharing/embed?autoplay=true&resolution=1080&mute=false&surl=4OBIAi7p0NBsxhc7NxcFjw";
+    const videoName = "TeraBox Video"; // You can change this title
 
     // Set video title
-    document.getElementById('videoTitle').textContent = decodeURIComponent(videoName);
+    document.getElementById('videoTitle').textContent = videoName;
 
     // Set video source
-    if (videoUrl) {
-        const videoSource = document.getElementById('videoSource');
-        videoSource.src = decodeURIComponent(videoUrl);
-        player.source = {
-            type: 'video',
-            sources: [{
-                src: decodeURIComponent(videoUrl),
-                type: 'video/mp4',
-            }]
-        };
-    } else {
-        document.getElementById('videoTitle').textContent = 'Error: No video URL provided';
-    }
+    const videoSource = document.getElementById('videoSource');
+    videoSource.src = teraboxUrl;
+    player.source = {
+        type: 'video',
+        sources: [{
+            src: teraboxUrl,
+            type: 'video/mp4',
+        }]
+    };
 
     // Handle errors
     player.on('error', (error) => {
