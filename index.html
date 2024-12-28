@@ -4,108 +4,48 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Player</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.min.css">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
             margin: 0;
-            padding: 16px;
-            background-color: #1c1c1c;
-            color: white;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .video-container {
-            width: 100%;
-            margin-top: 16px;
-            border-radius: 8px;
-            overflow: hidden;
+            padding: 0;
             background: #000;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
-        .video-title {
-            margin: 16px 0;
-            font-size: 18px;
-            font-weight: 500;
-        }
-        .plyr {
-            height: 100%;
+        #player {
+            flex-grow: 1;
             width: 100%;
-        }
-        .loading {
-            text-align: center;
-            padding: 20px;
-            font-size: 16px;
+            height: 100%;
+            border: none;
+            position: fixed;
+            top: 0;
+            left: 0;
         }
     </style>
 </head>
 <body>
-<div class="container">
-    <div class="video-title" id="videoTitle">Loading video...</div>
-    <div class="video-container">
-        <video id="player" playsinline controls>
-            <source id="videoSource" type="video/mp4">
-            Your browser doesn't support HTML5 video playback.
-        </video>
-    </div>
-</div>
-
+<div id="player"></div>
 <script>
     // Initialize Telegram WebApp
     const webapp = window.Telegram.WebApp;
     webapp.ready();
     webapp.expand();
 
-    // Set theme
-    document.body.style.backgroundColor = webapp.backgroundColor;
-    document.body.style.color = webapp.textColor;
+    // Get the video URL from the startapp parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const videoUrl = decodeURIComponent(urlParams.get('url'));
+    console.log("Received URL:", videoUrl); // For debugging
 
-    // Initialize video player
-    const player = new Plyr('#player', {
-        controls: [
-            'play-large',
-            'play',
-            'progress',
-            'current-time',
-            'duration',
-            'mute',
-            'volume',
-            'settings',
-            'fullscreen'
-        ],
-        settings: ['quality', 'speed'],
-        quality: {
-            default: 1080,
-            options: [4320, 2880, 2160, 1440, 1080, 720, 480, 360, 240]
-        }
-    });
-
-    // Hardcoded TeraBox URL
-    const teraboxUrl = "https://www.1024terabox.com/sharing/embed?autoplay=true&resolution=1080&mute=false&surl=4OBIAi7p0NBsxhc7NxcFjw";
-    const videoName = "TeraBox Video"; // You can change this title
-
-    // Set video title
-    document.getElementById('videoTitle').textContent = videoName;
-
-    // Set video source
-    const videoSource = document.getElementById('videoSource');
-    videoSource.src = teraboxUrl;
-    player.source = {
-        type: 'video',
-        sources: [{
-            src: teraboxUrl,
-            type: 'video/mp4',
-        }]
-    };
-
-    // Handle errors
-    player.on('error', (error) => {
-        console.error('Player error:', error);
-        document.getElementById('videoTitle').textContent = 'Error loading video. Please try again.';
-    });
+    // Create the iframe for the TeraBox player
+    if (videoUrl) {
+        const playerFrame = document.getElementById('player');
+        playerFrame.innerHTML = `<iframe src="${videoUrl}" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay; fullscreen"></iframe>`;
+    } else {
+        console.error("No video URL received"); // For debugging
+    }
 </script>
 </body>
 </html>
